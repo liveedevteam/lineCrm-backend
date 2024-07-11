@@ -10,15 +10,18 @@ import { lineConfig } from 'src/configs/lineConfig';
 import { Model } from 'mongoose';
 import { WebhookHistory } from './schemas/webhook-history.schema';
 import { InjectModel } from '@nestjs/mongoose';
+import { UserLineData } from './schemas/user-line-data.schema';
 
 @Injectable()
 export class WebhooksService {
   private clientConfig: ClientConfig;
-  private client: any;
+  private client;
 
   constructor(
     @InjectModel('WebhookHistory')
     private webhookHistoryModel: Model<WebhookHistory>,
+    @InjectModel('UserLineData')
+    private userLineDataModel: Model<UserLineData>,
   ) {
     this.clientConfig = {
       channelAccessToken: lineConfig.channelAccessToken,
@@ -34,11 +37,12 @@ export class WebhooksService {
       return;
     }
     await this.saveWebhookHistory(body.destination, body.events);
+    await Promise.all(
+      body.events.map(async (event) => {
+        await this.saveAndUpdateUserLineData(event.source.userId);
+      }),
+    );
     return 'OK';
-  }
-
-  async replyMessage(replyToken: string, messages: Message | Message[]) {
-    return this.client.replyMessage(replyToken, messages);
   }
 
   async saveWebhookHistory(
@@ -70,5 +74,30 @@ export class WebhooksService {
       .update(JSON.stringify(body))
       .digest('base64');
     return signature === lineSignature;
+  }
+
+  async saveAndUpdateUserLineData(userId: string) {
+    const userLineData = await this.userLineDataModel.findOne({ userId });
+    if (!userLineData) {
+      const profile = await this.client.getProfile(userId);
+      const newUserLineData = new this.userLineDataModel({
+        userId,
+        displayName: profile.displayName,
+        pictureUrl: profile.pictureUrl,
+        statusMessage: profile.statusMessage,
+      });
+      return newUserLineData.save();
+    }
+    const profile = await this.client.getProfile(userId);
+    if (
+      userLineData.displayName !== profile.displayName ||
+      userLineData.pictureUrl !== profile.pictureUrl ||
+      userLineData.statusMessage !== profile.statusMessage
+    ) {
+      userLineData.displayName = profile.displayName;
+      userLineData.pictureUrl = profile.pictureUrl;
+      userLineData.statusMessage = profile.statusMessage;
+      return userLineData.save();
+    }
   }
 }
