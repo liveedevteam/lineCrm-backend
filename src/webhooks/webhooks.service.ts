@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ClientConfig, messagingApi, Message } from '@line/bot-sdk';
+import {
+  ClientConfig,
+  messagingApi,
+  Message,
+  WebhookRequestBody,
+} from '@line/bot-sdk';
 import * as crypto from 'crypto';
 import { lineConfig } from 'src/configs/lineConfig';
 import { Model } from 'mongoose';
@@ -22,7 +27,7 @@ export class WebhooksService {
     this.client = new messagingApi.MessagingApiClient(this.clientConfig);
   }
 
-  async webhook(body: any, lineSignature: string) {
+  async webhook(body: WebhookRequestBody, lineSignature: string) {
     const validateWebhook = await this.validateWebhook(body, lineSignature);
     if (validateWebhook) {
       console.log(`Invalid signature`);
@@ -36,7 +41,10 @@ export class WebhooksService {
     return this.client.replyMessage(replyToken, messages);
   }
 
-  async saveWebhookHistory(destination: string, events: any) {
+  async saveWebhookHistory(
+    destination: WebhookRequestBody['destination'],
+    events: WebhookRequestBody['events'],
+  ) {
     if (!destination || destination === '') {
       console.log(`Invalid destination`);
       return;
@@ -56,7 +64,7 @@ export class WebhooksService {
     return this.webhookHistoryModel.find().sort({ createdAt: -1 });
   }
 
-  async validateWebhook(body: any, lineSignature: string) {
+  async validateWebhook(body: WebhookRequestBody, lineSignature: string) {
     const signature = crypto
       .createHmac('SHA256', lineConfig.channelSecret)
       .update(JSON.stringify(body))
