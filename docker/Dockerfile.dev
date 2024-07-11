@@ -1,0 +1,19 @@
+# Dockerfile.dev
+
+# Use the official Node.js image.
+FROM node:18-alpine
+
+# Set the working directory inside the container.
+WORKDIR /app
+
+# Copy package.json and package-lock.json into the container.
+COPY package*.json ./
+
+# Install a tool to watch for file changes and restart the server automatically.
+RUN npm install -g nodemon
+
+# Copy the rest of the application code into the container.
+COPY . .
+
+# Start the application with nodemon to watch for changes.
+CMD ["sh", "-c", "npm install && npm run start:dev"]
