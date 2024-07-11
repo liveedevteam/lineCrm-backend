@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import * as line from '@line/bot-sdk';
+import { ClientConfig, messagingApi, Message } from '@line/bot-sdk';
 import * as crypto from 'crypto';
 import { lineConfig } from 'src/configs/lineConfig';
 import { Model } from 'mongoose';
@@ -8,34 +8,31 @@ import { InjectModel } from '@nestjs/mongoose';
 
 @Injectable()
 export class WebhooksService {
-  private client: line.Client;
+  private clientConfig: ClientConfig;
+  private client: any;
 
   constructor(
     @InjectModel('WebhookHistory')
     private webhookHistoryModel: Model<WebhookHistory>,
   ) {
-    this.client = new line.Client(lineConfig);
+    this.clientConfig = {
+      channelAccessToken: lineConfig.channelAccessToken,
+      channelSecret: lineConfig.channelSecret,
+    };
+    this.client = new messagingApi.MessagingApiClient(this.clientConfig);
   }
 
   async webhook(body: any, lineSignature: string) {
-    console.log(`webhook body`, JSON.stringify(body));
-    const signature = crypto
-      .createHmac('SHA256', lineConfig.channelSecret)
-      .update(JSON.stringify(body))
-      .digest('base64');
-    if (signature !== lineSignature) {
+    const validateWebhook = await this.validateWebhook(body, lineSignature);
+    if (validateWebhook) {
       console.log(`Invalid signature`);
       return;
     }
-    console.log(`Valid signature`);
     await this.saveWebhookHistory(body.destination, body.events);
     return 'OK';
   }
 
-  async replyMessage(
-    replyToken: string,
-    messages: line.Message | line.Message[],
-  ) {
+  async replyMessage(replyToken: string, messages: Message | Message[]) {
     return this.client.replyMessage(replyToken, messages);
   }
 
@@ -56,6 +53,14 @@ export class WebhooksService {
   }
 
   async getWebhookHistory() {
-    return this.webhookHistoryModel.find().exec();
+    return this.webhookHistoryModel.find().sort({ createdAt: -1 });
+  }
+
+  async validateWebhook(body: any, lineSignature: string) {
+    const signature = crypto
+      .createHmac('SHA256', lineConfig.channelSecret)
+      .update(JSON.stringify(body))
+      .digest('base64');
+    return signature === lineSignature;
   }
 }
